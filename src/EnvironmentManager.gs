@@ -68,7 +68,7 @@ function getBoundDayTime() {
  */
 function getAutoUpdateNeeded() {
   var properties = PropertiesService.getScriptProperties();
-  return properties.getProperty('autoUpdateNeeded').toLowerCase() === 'true';
+  return properties.getProperty('autoUpdateNeeded')?.toLowerCase() === 'true';
 }
 
 /**
