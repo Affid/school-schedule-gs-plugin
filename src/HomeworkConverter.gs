@@ -32,7 +32,7 @@ function convertFromSheetToDays(headers, days) {
  * @return {Homework[]} homework
  */
 function convertArrayToHomeworks(row, headers) {
-  return row.filter((value, index) => {return index > 0}).map((value, index) => { return new Homework(headers[index], value) });
+  return row.map((value, index) => { if(headers[index] != 'Дата') return new Homework(headers[index], value)}).filter(value => value != undefined);
 }
 
 function parseKeyValue(key, value) {
