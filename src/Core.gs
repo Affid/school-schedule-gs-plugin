@@ -16,27 +16,75 @@ function updateSchedule() {
   var homeworksPerDate = getHomeworksForTenDay(firstDayToParse);
   var existingHomeworks = getExistingHomeworksForTenDay(firstDayToParse);
   var valuesToSet = mergeExistingHomeworkWithNew(existingHomeworks, homeworksPerDate);
-  setValues(valuesToSet);
+  setValues(valuesToSet, getSheetHeaders());
+  console.log("Данные обновлены на листе ДЗ");
 }
 
-function setValues(valuesToSet){
+/**
+ * @param {HomeworkDay[]} valuesToSet
+ * 
+ * @param {Object[]} headers
+ */
+function setValues(valuesToSet, headers) {
+  var sortedDays = valuesToSet.sort((a, b) => a.date.getTime() - b.date.getTime());
+  var firstDay = sortedDays[0].date;
+  var lastRow = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getLastRow();
+  lastRow = lastRow < 11 ? 1 : lastRow - 10; 
+  var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(lastRow, 1, 10, 1).getValues();
+  var index = dateColumn.findIndex(value => value[0] instanceof Date && value[0].getTime() == firstDay.getTime());
+  index = index == -1 ? lastRow + 1 : index + lastRow;
 
+  var newSubjects = sortedDays.map(value => value.homeworks.map(hw => hw.name)).reduce((prev, curr) => {
+    if(prev === undefined){
+      return curr;
+    }
+    return [...new Set(prev.concat(curr))];
+  }).filter(subj => !headers.includes(subj));
+
+  if(newSubjects.length > 0){
+    headers.push(...newSubjects);
+    updateHeaders(headers);
+  }
+
+  var values = sortedDays.map((value, i) => {
+    return headers.map((header => {
+      if (header == "Дата") {
+        return value.date;
+      }
+      return value.homeworks.find(hw => hw.name === header)?.task;
+    }));
+  });
+
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(index, 1, values.length, values[0].length).setValues(values);
 }
 
 /**
  * Sets up the arguments for the given trigger.
  *
- * @param {*} existingHomeworks - homeworks already in the sheet
+ * @param {HomeworkDay[]} existingHomeworks - homeworks already in the sheet
  * 
- * @param {*} homeworksPerDate - homeworks to add
+ * @param {HomeworkDay[]} homeworksPerDate - homeworks to add
  * 
- * @return {Date} - firstDayToParse
+ * @return {HomeworkDay[]} - new homeworks to set
  */
 function mergeExistingHomeworkWithNew(existingHomeworks, homeworksPerDate) {
-  console.log("Existing homeworks");
-  console.log(existingHomeworks);
-  console.log("New homeworks");
-  console.log(homeworksPerDate);
+  console.log("Existing homeworks:\n" + JSON.stringify(existingHomeworks));
+  console.log("New homeworks:\n" + JSON.stringify(homeworksPerDate));
+  var homeworksToAdd = homeworksPerDate.map((hw) => {
+    var exisitingHwForDay = existingHomeworks.find(hwEx => hwEx.date.getTime() === hw.date.getTime());
+    if (exisitingHwForDay === undefined) {
+      return hw;
+    }
+    var newHws = hw.homeworks.filter(homework => {
+      var old = exisitingHwForDay.homeworks.find(exHw => { return exHw != undefined && homework.name === exHw.name });
+      return old === undefined || old.task != homework.task;
+    });
+
+
+    return new HomeworkDay(hw.date, newHws.concat(exisitingHwForDay.homeworks));
+  });
+  console.log("Homeworks to add:\n" + JSON.stringify(homeworksToAdd));
+  return homeworksToAdd;
 }
 
 /**
@@ -68,16 +116,16 @@ function getScriptStartTime() {
 /**
  * @param {Date} firstDayToParse
  * 
- * @return {LessonDay[]} homeworks
+ * @return {HomeworkDay[]} homeworks
  */
 function getHomeworksForTenDay(firstDayToParse) {
   var homeworks = `{
     "homeworks": [{
-      "date": "15.06.2022",
+      "date": "06.15.2022",
       "lessons": [{
         "number": 1,
         "name": "Английский язык",
-        "task": "п.1 , стр12 упр. 5-10"
+        "task": "п.1 , стр12 упр. 5-25"
       },
       {
         "number": 2,
@@ -86,7 +134,7 @@ function getHomeworksForTenDay(firstDayToParse) {
       }]
     },
     {
-      "date": "16.06.2022",
+      "date": "06.16.2022",
       "lessons": [{
         "number": 2,
         "name": "Английский язык",
@@ -96,22 +144,65 @@ function getHomeworksForTenDay(firstDayToParse) {
         "number": 4,
         "name": "Русский язык",
         "task": "п.1 , стр12 упр. 5-15"
+      },
+      {
+        "number": 5,
+        "name": "Биохимия",
+        "task": "п.1 , стр12 упр. 5-15"
       }]
     }]
   }`;
-  return convertFromJsonToDays(homeworks);
+  var homeworksPerDay = convertFromJsonToDays(homeworks);
+  return homeworksPerDay.map((value) => {
+    var hwPerName = {};
+    value.lessons.forEach(lesson => {
+      hwPerName[lesson.homework.name] = hwPerName[lesson.homework.name] == undefined ? lesson.homework.task : hwPerName[lesson.homework.name] + "; " + lesson.homework.task;
+    })
+    var hw = Object.keys(hwPerName).map((key) => new Homework(key, hwPerName[key]))
+    return new HomeworkDay(new Date(value.date), hw);
+  })
 }
 
 
 /**
  * @param {Date} firstDayToParse
  * 
- * @return {Day[]} homeworks
+ * @return {HomeworkDay[]} homeworks
  */
 function getExistingHomeworksForTenDay(firstDayToParse) {
-  var headers = ["Дата", "Англ. язык", "Биология","География"];
-  var days = [["10.05.2022", "Placeholder for task1", "Placeholder for task2", "Placeholder for task3"]];
-  var result = convertFromSheetToDays(headers,days);
-  console.log(result);
-  return result;
+  var headers = getSheetHeaders();
+
+  var lastRow = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getLastRow();
+  if(lastRow == 1){
+    return convertFromSheetToDays(headers, []);
+  }
+  var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(lastRow - 10, 1, 10, 1).getValues();
+  var index = dateColumn.findIndex(value => {
+    var t1 = { "year": value[0].getFullYear(), "month": value[0].getMonth(), "day": value[0].getDate() };
+    var t2 = { "year": firstDayToParse.getFullYear(), "month": firstDayToParse.getMonth(), "day": firstDayToParse.getDate() };
+    var t3 = JSON.stringify(t1) === JSON.stringify(t2);
+    return value[0] instanceof Date && t3;
+  });
+  index = index == -1 ? lastRow + 1 : index + lastRow - 10;
+
+  var days = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(index, 1, 10, headers.length).getValues();
+
+  return convertFromSheetToDays(headers, days);
 }
+
+/**
+ * @return {String[]} homeworks
+ */
+function getSheetHeaders() {
+  var lastColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getLastColumn();
+  var headers = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(1, 1, 1, lastColumn).getValues();
+  return headers[0];
+}
+
+/**
+ * @param {Object[]} headers
+ */
+function updateHeaders(headers){
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(1, 1, 1, headers.length).setValues([headers]);
+}
+
