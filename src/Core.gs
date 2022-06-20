@@ -121,7 +121,7 @@ function getScriptStartTime() {
 function getHomeworksForTenDay(firstDayToParse) {
   var homeworks = `{
     "homeworks": [{
-      "date": "06.15.2022",
+      "date": "06.21.2022",
       "lessons": [{
         "number": 1,
         "name": "Английский язык",
@@ -134,7 +134,7 @@ function getHomeworksForTenDay(firstDayToParse) {
       }]
     },
     {
-      "date": "06.16.2022",
+      "date": "06.20.2022",
       "lessons": [{
         "number": 2,
         "name": "Английский язык",
@@ -148,6 +148,24 @@ function getHomeworksForTenDay(firstDayToParse) {
       {
         "number": 5,
         "name": "Биохимия",
+        "task": "п.1 , стр12 упр. 5-15"
+      }]
+    },
+    {
+      "date": "06.27.2022",
+      "lessons": [{
+        "number": 2,
+        "name": "Английский язык",
+        "task": "п.1 , стр12 упр. 5-10"
+      },
+      {
+        "number": 4,
+        "name": "Русский язык",
+        "task": "п.1 , стр12 упр. 5-15"
+      },
+      {
+        "number": 5,
+        "name": "История",
         "task": "п.1 , стр12 упр. 5-15"
       }]
     }]
@@ -171,21 +189,34 @@ function getHomeworksForTenDay(firstDayToParse) {
  */
 function getExistingHomeworksForTenDay(firstDayToParse) {
   var headers = getSheetHeaders();
+  var offset = 10;
 
   var lastRow = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getLastRow();
   if(lastRow == 1){
     return convertFromSheetToDays(headers, []);
   }
-  var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(lastRow - 10, 1, 10, 1).getValues();
-  var index = dateColumn.findIndex(value => {
+  var firstRowToCheck = lastRow - offset;
+  if(firstRowToCheck < 1){
+    firstRowToCheck = 1;
+  }
+  
+  var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(firstRowToCheck, 1, offset, 1).getValues();
+  var firstDayToParseIndex = dateColumn.findIndex(value => {
+    if(!(value[0] instanceof Date)){
+      return false;
+    }
     var t1 = { "year": value[0].getFullYear(), "month": value[0].getMonth(), "day": value[0].getDate() };
     var t2 = { "year": firstDayToParse.getFullYear(), "month": firstDayToParse.getMonth(), "day": firstDayToParse.getDate() };
     var t3 = JSON.stringify(t1) === JSON.stringify(t2);
-    return value[0] instanceof Date && t3;
+    return t3;
   });
-  index = index == -1 ? lastRow + 1 : index + lastRow - 10;
+  firstDayToParseIndex = firstDayToParseIndex == -1 ? lastRow + 1 : firstDayToParseIndex + firstRowToCheck;
 
-  var days = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(index, 1, 10, headers.length).getValues();
+  offset = lastRow - firstDayToParseIndex;
+
+  offset = offset <= 0 ? 1 : offset;
+
+  var days = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(firstDayToParseIndex, 1, offset, headers.length).getValues();
 
   return convertFromSheetToDays(headers, days);
 }
