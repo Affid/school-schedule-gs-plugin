@@ -1,23 +1,52 @@
+const MILLIS_PER_DAY = 1000 * 60 * 60 * 24;
+const SCHEDULE_APP_URL = "https://dnevnik-schedule.herokuapp.com/schedule/?dateFrom=%s&dateTo=%s&login=%s&password=%s"
 
 function autoUpdate() {
   if (getAutoUpdateNeeded()) {
-    updateSchedule();
+    var scriptStartTime = getScriptStartTime();
+    updateSchedule(scriptStartTime);
   }
 }
 
 function updateOnClick() {
-
+  var scriptStartTime = getScriptStartTime();
+  updateSchedule(scriptStartTime);
 }
 
+/**
+ * Manually updates the sheet.
+ *
+ * @param {Date} scriptStartTime
+ */
+function updateManually(scriptStartTime) {
+  date = new Date(scriptStartTime);
+  console.log("==================")
+  console.log(date);
+  updateSchedule(date);
+}
 
-function updateSchedule() {
-  var scriptStartTime = getScriptStartTime();
+/**
+ * Updates the sheet.
+ *
+ * @param {Date} scriptStartTime
+ */
+function updateSchedule(scriptStartTime) {
   var firstDayToParse = getFirstIncludedDay(scriptStartTime);
   var homeworksPerDate = getHomeworksForTenDay(firstDayToParse);
   var existingHomeworks = getExistingHomeworksForTenDay(firstDayToParse);
   var valuesToSet = mergeExistingHomeworkWithNew(existingHomeworks, homeworksPerDate);
   setValues(valuesToSet, getSheetHeaders());
   console.log("Данные обновлены на листе ДЗ");
+  setLastUpdateDateTime(getScriptStartTime())
+}
+
+/**
+ * Sets up the time of update into the sheet.
+ *
+ * @param {Date} scriptStartTime
+ */
+function setLastUpdateDateTime(scriptStartTime) {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Расписание Неделя").getRange("J5").setValue(scriptStartTime)
 }
 
 /**
@@ -26,22 +55,25 @@ function updateSchedule() {
  * @param {Object[]} headers
  */
 function setValues(valuesToSet, headers) {
+  if (valuesToSet.length == 0) {
+    console.log("There is nothing to set")
+    return;
+  }
   var sortedDays = valuesToSet.sort((a, b) => a.date.getTime() - b.date.getTime());
   var firstDay = sortedDays[0].date;
   var lastRow = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getLastRow();
-  lastRow = lastRow < 11 ? 1 : lastRow - 10; 
-  var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(lastRow, 1, 10, 1).getValues();
+  var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(1, 1, lastRow, 1).getValues();
   var index = dateColumn.findIndex(value => value[0] instanceof Date && value[0].getTime() == firstDay.getTime());
-  index = index == -1 ? lastRow + 1 : index + lastRow;
+  index = index == -1 ? lastRow + 1 : index + 1;
 
   var newSubjects = sortedDays.map(value => value.homeworks.map(hw => hw.name)).reduce((prev, curr) => {
-    if(prev === undefined){
+    if (prev === undefined) {
       return curr;
     }
     return [...new Set(prev.concat(curr))];
   }).filter(subj => !headers.includes(subj));
 
-  if(newSubjects.length > 0){
+  if (newSubjects.length > 0) {
     headers.push(...newSubjects);
     updateHeaders(headers);
   }
@@ -100,7 +132,8 @@ function getFirstIncludedDay(scriptStartTime) {
   if (scriptStartTime.getHours() > lastHour
     || (scriptStartTime.getHours() == lastHour && scriptStartTime.getMinutes() > 0)) {
     console.log("Время позже последнего допустимого для учета сегодняшнего дня. Обновление будет произведено начиная со следующего дня");
-    return new Date(scriptStartTime.getFullYear, scriptStartTime.getMonth, scriptStartTime.getDate() + 1);
+    var firstIncludedDay = new Date(scriptStartTime.getTime() + MILLIS_PER_DAY);
+    return firstIncludedDay;
   }
   console.log("Обновление будет произведено начиная с текущего дня");
   return scriptStartTime;
@@ -119,65 +152,19 @@ function getScriptStartTime() {
  * @return {HomeworkDay[]} homeworks
  */
 function getHomeworksForTenDay(firstDayToParse) {
-  var homeworks = `{
-    "homeworks": [{
-      "date": "06.21.2022",
-      "lessons": [{
-        "number": 1,
-        "name": "Английский язык",
-        "task": "п.1 , стр12 упр. 5-25"
-      },
-      {
-        "number": 2,
-        "name": "Русский язык",
-        "task": "п.1 , стр12 упр. 5-15"
-      }]
-    },
-    {
-      "date": "06.20.2022",
-      "lessons": [{
-        "number": 2,
-        "name": "Английский язык",
-        "task": "п.1 , стр12 упр. 5-10"
-      },
-      {
-        "number": 4,
-        "name": "Русский язык",
-        "task": "п.1 , стр12 упр. 5-15"
-      },
-      {
-        "number": 5,
-        "name": "Биохимия",
-        "task": "п.1 , стр12 упр. 5-15"
-      }]
-    },
-    {
-      "date": "06.27.2022",
-      "lessons": [{
-        "number": 2,
-        "name": "Английский язык",
-        "task": "п.1 , стр12 упр. 5-10"
-      },
-      {
-        "number": 4,
-        "name": "Русский язык",
-        "task": "п.1 , стр12 упр. 5-15"
-      },
-      {
-        "number": 5,
-        "name": "История",
-        "task": "п.1 , стр12 упр. 5-15"
-      }]
-    }]
-  }`;
+  var lasDay = new Date(firstDayToParse.getTime() + MILLIS_PER_DAY * 10);
+  var strFirstDay = Utilities.formatDate(firstDayToParse, "GMT+3", "MM.dd.yyyy");
+  var strLastDay = Utilities.formatDate(lasDay, "GMT+3", "MM.dd.yyyy");
+  console.log(Utilities.formatString(SCHEDULE_APP_URL, strFirstDay, strLastDay, getDnevnikLogin(), getDnevnikPassword()))
+  var homeworks = UrlFetchApp.fetch(Utilities.formatString(SCHEDULE_APP_URL, strFirstDay, strLastDay, getDnevnikLogin(), getDnevnikPassword())).getContentText();
   var homeworksPerDay = convertFromJsonToDays(homeworks);
-  return homeworksPerDay.map((value) => {
+  return homeworksPerDay.map((day) => {
     var hwPerName = {};
-    value.lessons.forEach(lesson => {
+    day.lessons.forEach(lesson => {
       hwPerName[lesson.homework.name] = hwPerName[lesson.homework.name] == undefined ? lesson.homework.task : hwPerName[lesson.homework.name] + "; " + lesson.homework.task;
     })
     var hw = Object.keys(hwPerName).map((key) => new Homework(key, hwPerName[key]))
-    return new HomeworkDay(new Date(value.date), hw);
+    return new HomeworkDay(new Date(day.date), hw);
   })
 }
 
@@ -192,17 +179,17 @@ function getExistingHomeworksForTenDay(firstDayToParse) {
   var offset = 10;
 
   var lastRow = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getLastRow();
-  if(lastRow == 1){
+  if (lastRow == 1) {
     return convertFromSheetToDays(headers, []);
   }
   var firstRowToCheck = lastRow - offset;
-  if(firstRowToCheck < 1){
+  if (firstRowToCheck < 1) {
     firstRowToCheck = 1;
   }
-  
+
   var dateColumn = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(firstRowToCheck, 1, offset, 1).getValues();
   var firstDayToParseIndex = dateColumn.findIndex(value => {
-    if(!(value[0] instanceof Date)){
+    if (!(value[0] instanceof Date)) {
       return false;
     }
     var t1 = { "year": value[0].getFullYear(), "month": value[0].getMonth(), "day": value[0].getDate() };
@@ -233,7 +220,7 @@ function getSheetHeaders() {
 /**
  * @param {Object[]} headers
  */
-function updateHeaders(headers){
+function updateHeaders(headers) {
   SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ДЗ").getRange(1, 1, 1, headers.length).setValues([headers]);
 }
 
