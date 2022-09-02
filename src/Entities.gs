@@ -46,3 +46,21 @@ class Homework{
     this.task = task;
   }
 }
+
+
+class HomeworkAndCommentBySubject{
+
+  /**
+   * @param {String} subject
+   * 
+   * @param {String} homework
+   * 
+   * @param {String} comment
+   */
+  constructor(subject, homework, comment){
+    this.subject = subject;
+    this.homework = homework;
+    this.comment = comment;
+  }
+
+}
